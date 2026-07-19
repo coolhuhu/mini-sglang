@@ -30,18 +30,29 @@ class Engine:
     def __init__(self, config: EngineConfig):
         assert not torch.cuda.is_initialized()
         set_tp_info(rank=config.tp_info.rank, size=config.tp_info.size)
+
+        # 一些配置参数的调整
+        # 根据硬件来选择合适的 attn_backend 和 moe_backend
+        # 注意，这里只是设置使用那种 attn_backend 和 moe_backend
+        # 对于具体的 attn_backend 和 moe_backend 的初始化
+        # 在下面的 create_attention_backend 和 create_moe_backend 函数中完成
         _adjust_config(config)
 
         self.device = torch.device(f"cuda:{config.tp_info.rank}")
         torch.cuda.set_device(self.device)
         torch.manual_seed(42)
+
+        # TODO: 补课 torch.cuda.Stream() 的背景知识
         self.stream = torch.cuda.Stream()
         torch.cuda.set_stream(self.stream)
         self.dtype = config.dtype
+
         self.ctx = Context(config.page_size)
         set_global_ctx(self.ctx)
 
+        # TODO: 补课
         self.tp_cpu_group = self._init_communication(config)
+        # TODO: 补课
         init_free_memory = self._sync_get_memory()[1]
         logger.info_rank0(f"Free memory before loading model: {mem_GB(init_free_memory)}")
 
@@ -110,6 +121,10 @@ class Engine:
         )
 
     def _init_communication(self, config: EngineConfig) -> torch.distributed.ProcessGroup:
+        """
+            GPU通信默认使用 pynccl (默认值，config.use_pynccl=True)
+            backend = gloo 进行 CPU 通信，用于显存信息的同步，见 _sync_get_memory 函数
+        """
         if config.tp_info.size == 1 or config.use_pynccl:
             torch.distributed.init_process_group(
                 backend="gloo",

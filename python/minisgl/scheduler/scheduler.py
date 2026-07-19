@@ -48,6 +48,7 @@ class Scheduler(SchedulerIOMixin):
 
         self.engine = Engine(config)
 
+        # TODO: understand.
         # use another stream to overlap metadata processing with computation
         self.device = self.engine.device
         self.stream = torch.cuda.Stream(device=self.device)
