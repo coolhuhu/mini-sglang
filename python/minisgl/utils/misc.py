@@ -17,6 +17,8 @@ def call_if_main(name: str = "__main__", discard: bool | None = None):
             return lambda f: (f() and None) or f
 
 
+# allow_replicate=True 处理了 TP 数大于 KV head 数的情形
+# 例如 2 个 KV heads、TP=8：每个 rank 保存 1 个 KV head，允许复制
 def div_even(a: int, b: int, allow_replicate: bool = False) -> int:
     """Divides two integers. If allow_replicate=True, allows b > a when b % a == 0, returning 1."""
     if allow_replicate and b > a:

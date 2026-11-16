@@ -27,6 +27,8 @@ class CacheManager:
     def match_req(self, req: PendingReq) -> MatchResult:
         input_len = req.input_len
         assert input_len > 0, "Input length must be greater than 0."
+        # 为什么是 input_len - 1 ?
+        # 保留最后一个 token 进行 decode token one by one.
         return self.prefix_cache.match_prefix(req.input_ids[: input_len - 1])
 
     @property

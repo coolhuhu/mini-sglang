@@ -27,10 +27,18 @@ class SamplingParams:
 
 @dataclass(eq=False)
 class Req:
+    # 当前已知的完整 token 序列，保存 prompt 和已经生成的 token
     input_ids: torch.Tensor  # cpu tensor
+    
+    # 请求专属的 page table / token pool 行号
     table_idx: int
+    
+    # 有效的 KV cache token 数量，也即 cache 命中的前缀长度
     cached_len: int
+    
+    # 允许生成的最大 token 数
     output_len: int
+    
     uid: int
     sampling_params: SamplingParams
     cache_handle: BaseCacheHandle
@@ -47,6 +55,9 @@ class Req:
 
     @property
     def extend_len(self) -> int:
+        # 正常 prefill：通常 extend_len > 1；
+        # decode：通常 extend_len == 1；
+        # chunked prefill：extend_len 是当前 chunk 的长度。
         return self.device_len - self.cached_len
 
     def complete_one(self) -> None:

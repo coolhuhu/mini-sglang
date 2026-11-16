@@ -41,6 +41,7 @@ class PrefillAdder:
             return None
 
         # TODO: consider host cache match case
+        # prefix match
         handle = self.cache_manager.match_req(req).cuda_handle
         cached_len = handle.cached_len
         # TODO: better estimate policy
@@ -48,11 +49,13 @@ class PrefillAdder:
         estimated_len = extend_len + req.output_len
 
         if estimated_len + self.reserved_size > self.cache_manager.available_size:
+            # cache 中的可用 token 空间不能够容纳下当前 req prefill 计算所需要的 token 数量
             return None
         self.cache_manager.lock(handle)
         if estimated_len + self.reserved_size > self.cache_manager.available_size:
             return self.cache_manager.unlock(handle)
 
+        # 从 table manager 中分配一个 slot，用于存储该 req 的 token id 和 page table
         table_idx = self.table_manager.allocate()
         if cached_len > 0:  # NOTE: set the cached part
             device_ids = self.table_manager.token_pool[table_idx][:cached_len]
@@ -94,6 +97,9 @@ class PrefillAdder:
             return None
 
         if chunked_req := pending_req.chunked_req:
+            # chunk prefill
+            # 该 req 在上一个 schedule batch 中，因为 token_budget 不足，
+            # 进行了 chunk prefill 计算，剩下的未计算的 token 继续进行 prefill
             return self._add_one_req(
                 pending_req=pending_req,
                 cache_handle=chunked_req.cache_handle,
@@ -136,6 +142,7 @@ class PrefillManager:
         )
         reqs: List[Req] = []
         chunked_list: List[PendingReq] = []
+        # 这个 for 循环的目的是什么？
         for pending_req in self.pending_list:
             if req := adder.try_add_one(pending_req):
                 pending_req.chunked_req = None
@@ -147,6 +154,8 @@ class PrefillManager:
                 break  # We cannot add more requests
         if len(reqs) == 0:
             return None
+        
+        # 为什么需要将 chunked_list 和 pending_list 拼起来
         self.pending_list = chunked_list + self.pending_list[len(reqs) :]
         return Batch(reqs=reqs, phase="prefill")
 

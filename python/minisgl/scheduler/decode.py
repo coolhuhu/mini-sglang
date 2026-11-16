@@ -26,6 +26,14 @@ class DecodeManager:
 
     @property
     def inflight_tokens(self) -> int:
+        # 当前处于 decode 阶段的请求中（running_reqs），未来将生成 token 数量的估计值，
+        # 包含的是每个请求未来生成token的数量以及 page 对齐所浪费的token数量的总和
+        #
+        # 这样计算的目的是为了保证，已开始生成的请求不会因新 prefill 抢占 cache 而中途 OOM
+        # page_size - 1 是一个上限值
+        # 假设一个  req 的 remain_len 为 17，page_size 为 16，
+        # 最不佳的情况下，当前 req 申请的 page 中没有额外的空间了，那么还需要预留 2 个 page，
+        # 才能保证当前的 req 有足够的空间完成 decode。page_size - 1 保证了decode预留空间的上限值
         tokens_reserved = (self.page_size - 1) * len(self.running_reqs)  # 1 page reserved
         return sum(req.remain_len for req in self.running_reqs) + tokens_reserved
 

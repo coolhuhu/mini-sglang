@@ -70,6 +70,8 @@ class Scheduler(SchedulerIOMixin):
         self.tokenizer = load_tokenizer(config.model_path)
         self.eos_token_id = self.tokenizer.eos_token_id
         self.token_pool = self.table_manager.token_pool
+        
+        # 限制一次 prefill batch 计算的token总数，见 PrefillMananger.schedule_next_batch
         self.prefill_budget = config.max_extend_tokens
         # self.config = config
 
@@ -219,10 +221,14 @@ class Scheduler(SchedulerIOMixin):
 
     def _schedule_next_batch(self) -> ForwardInput | None:
         # TODO: support other policies: e.g. DECODE first
+        
+        # 调度哪些 req 构成一个 batch 进行 prefill or decode
         batch = (
             self.prefill_manager.schedule_next_batch(self.prefill_budget)
             or self.decode_manager.schedule_next_batch()
         )
+        
+        # 为此次调度的 batch 分配 page cache、KV cache 等资源
         return self._prepare_batch(batch) if batch else None
 
     def _forward(self, forward_input: ForwardInput) -> ForwardOutput:
