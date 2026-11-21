@@ -101,9 +101,13 @@ class FrontendManager:
     config: ServerArgs
     send_tokenizer: ZmqAsyncPushQueue[BaseTokenizerMsg]
     recv_tokenizer: ZmqAsyncPullQueue[BaseFrontendMsg]
+    # uid 用来把外部连接与内部请求对应起来，
+    # 它会随消息经过 Tokenizer、Scheduler 和 Detokenizer，最终再回到 API Server。
     uid_counter: int = 0
     initialized: bool = False
+    # 保存已经到达、尚未被该请求取走的 UserReply
     ack_map: Dict[int, List[UserReply]] = field(default_factory=dict)
+    # 用来通知负责当前请求的等待协程“有新结果到了”
     event_map: Dict[int, asyncio.Event] = field(default_factory=dict)
 
     def new_user(self) -> int:

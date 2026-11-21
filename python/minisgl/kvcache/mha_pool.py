@@ -24,7 +24,12 @@ class MHAKVCache(BaseKVCachePool):
         device: torch.device,
     ) -> None:
         tp_info = get_tp_info()
+        # 分布式运行时，一个 GPU 不一定保存全部 KV 头
+        # 根据有多少个 tensor-parallel rank，
+        # 用 div_even(..., allow_replicate=True) 算出当前 rank 应保存的 local_kv_heads。
+        # 因此，这块缓存的头数始终和当前 rank 的 Attention 计算一致。
         local_kv_heads = div_even(num_kv_heads, tp_info.size, allow_replicate=True)
+        # 管理的是物理 KVCache，即会占用实际的 GPU 显存
         self._kv_buffer = torch.empty(
             (2, num_layers, num_pages, page_size, local_kv_heads, head_dim),
             device=device,

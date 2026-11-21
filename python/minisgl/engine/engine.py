@@ -77,6 +77,8 @@ class Engine:
         # NOTE: 1. aligned to 128 bytes; 2. store raw locations instead of pages
         self.max_seq_len = min(config.max_seq_len, num_tokens)
         aligned_max_seq_len = _align_up_32(self.max_seq_len)
+        # page_table 管理每个 Req 中每个 token 的 KVCache 存放在那个 kvcache_pool 中的那个位置；
+        # 是逻辑 token 和物理 KVCache 位置的映射
         self.ctx.page_table = self.page_table = torch.zeros(  # + 1 for dummy request
             (config.max_running_req + 1, aligned_max_seq_len),
             dtype=torch.int32,

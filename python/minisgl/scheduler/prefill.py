@@ -32,6 +32,9 @@ class ChunkedReq(Req):
 @dataclass
 class PrefillAdder:
     token_budget: int
+    # 当前引擎中，处在 decode 阶段的请求队列中，
+    # 请求队列中的所有 Req 能够完成 generation 仍然需要的 token 数量，
+    # 见 DecodeManager.inflight_tokens
     reserved_size: int
     cache_manager: CacheManager
     table_manager: TableManager
@@ -40,8 +43,6 @@ class PrefillAdder:
         if self.table_manager.available_size == 0:
             return None
 
-        # TODO: consider host cache match case
-        # prefix match
         handle = self.cache_manager.match_req(req).cuda_handle
         cached_len = handle.cached_len
         # TODO: better estimate policy
@@ -49,8 +50,12 @@ class PrefillAdder:
         estimated_len = extend_len + req.output_len
 
         if estimated_len + self.reserved_size > self.cache_manager.available_size:
-            # cache 中的可用 token 空间不能够容纳下当前 req prefill 计算所需要的 token 数量
+            # kVCache Pool 中的可用 token 空间不能够容纳下当前 req 完成一次完成的 generation (prefill + decode)
+            # estimated_len 表示 PendingReq 完成一次完整的 generation (prefill + decode)，引擎需要额外预留的 token 所对应的计算资源
             return None
+        
+        # 命中的位置在使用前必须锁定。
+        # 否则，另一个请求可能淘汰这段前缀并重新分配这些 slot，当前请求的 page_table 就会指向错误数据。
         self.cache_manager.lock(handle)
         if estimated_len + self.reserved_size > self.cache_manager.available_size:
             return self.cache_manager.unlock(handle)
@@ -107,6 +112,7 @@ class PrefillAdder:
                 cached_len=chunked_req.cached_len,
             )
 
+        # 新请求，先试分配，再正式加入
         if resource := self._try_allocate_one(pending_req):
             cache_handle, table_idx = resource
             return self._add_one_req(
@@ -155,7 +161,8 @@ class PrefillManager:
         if len(reqs) == 0:
             return None
         
-        # 为什么需要将 chunked_list 和 pending_list 拼起来
+        # 为什么需要将 chunked_list 和 pending_list 拼起来？
+        # 将进行了 chunk prefill 且未完成的 req，放回队列头部，避免饥饿
         self.pending_list = chunked_list + self.pending_list[len(reqs) :]
         return Batch(reqs=reqs, phase="prefill")
 

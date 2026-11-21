@@ -89,6 +89,8 @@ class SchedulerIOMixin:
         pending_msgs: List[BaseBackendMsg] = []
         if blocking:
             self.run_when_idle()
+            # if blocking is True, self._recv_from_tokenizer.get_raw() 调用将会阻塞
+            # 直至有新消息
             raw = self._recv_from_tokenizer.get_raw()
             self._send_into_ranks.put_raw(raw)
             pending_msgs.append(self._recv_from_tokenizer.decode(raw))

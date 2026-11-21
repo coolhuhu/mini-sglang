@@ -18,7 +18,7 @@ class RadixTreeNode:
     counter: int = 0
 
     def __init__(self, key_fn: KEY_FN, tic: int | None = None) -> None:
-        self.key_fn = key_fn
+        self.key_fn = key_fn    # 从 self._key 提取“子节点序列索引”的函数
         self.children: Dict[Any, RadixTreeNode] = {}
         self._parent: RadixTreeNode | None = None
         self.ref_count: int = 0
@@ -216,6 +216,7 @@ class RadixPrefixCache(BasePrefixCache):
 
             # NOTE: at least 1 page is matched, so match_len >= page_size
             match_len = node.get_match_len(input_ids[prefix_len:])
+            # NOTE: 缓存是按页复用，因此需要按 page_size 向下取整
             match_len = align_down(match_len, self.page_size)
             prefix_len += match_len
 

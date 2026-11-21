@@ -45,6 +45,8 @@ class Req:
 
     def __post_init__(self) -> None:
         assert self.input_ids.is_cpu
+        # device_len 当前这一轮需要处理的序列长度，即模型当前这一轮计算的序列长度，
+        # 初始化为 len(input_ids)，即 len(prompt_ids) 
         self.device_len = len(self.input_ids)
         self.max_device_len = len(self.input_ids) + self.output_len
         assert 0 <= self.cached_len < self.device_len <= self.max_device_len
@@ -61,6 +63,9 @@ class Req:
         return self.device_len - self.cached_len
 
     def complete_one(self) -> None:
+        # 完成一轮计算，那么当前的 cached_len 即为当前这一轮模型计算当前 Req 的序列长度
+        # 即把刚处理完的部分划入已有 KVCache
+        # self.device_len += 1 给下一次生成的 token 留出一个位置
         self.cached_len = self.device_len
         self.device_len += 1
 
@@ -86,6 +91,7 @@ class Batch:
     # these fields should be set by scheduler
     input_ids: torch.Tensor = field(init=False)
     positions: torch.Tensor = field(init=False)
+    # 按 token 指向实际写入位置
     out_loc: torch.Tensor = field(init=False)
     padded_reqs: List[Req] = field(init=False)
     # this field should be set by attention backend

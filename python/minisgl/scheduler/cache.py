@@ -17,6 +17,7 @@ class CacheManager:
         # The `_free_slots` follows a page-aligned manner. For example, if page_size = 2,
         # the `_free_slots` may look like [0, 2, 4, 6, ...], and each slot represents a page.
         device = page_table.device
+        # 按页记录空闲空间
         self.free_slots = torch.arange(num_pages, dtype=torch.int32, device=device) * page_size
         self.prefix_cache = create_prefix_cache(device=device, type=type)
         self.device = device

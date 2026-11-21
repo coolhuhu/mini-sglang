@@ -46,6 +46,7 @@ class Scheduler(SchedulerIOMixin):
     def __init__(self, config: SchedulerConfig):
         from minisgl.engine import Engine
 
+        # TODO: 理解 Scheduler 和 Engine 的职责划分
         self.engine = Engine(config)
 
         # TODO: understand.
@@ -223,6 +224,8 @@ class Scheduler(SchedulerIOMixin):
         # TODO: support other policies: e.g. DECODE first
         
         # 调度哪些 req 构成一个 batch 进行 prefill or decode
+        # 确定的 req 是从 prefill 和 decode 两个阶段考虑的，
+        # 即当下调用时刻，GPU的计算资源能够完成 req 的一次完整的 generation
         batch = (
             self.prefill_manager.schedule_next_batch(self.prefill_budget)
             or self.decode_manager.schedule_next_batch()
