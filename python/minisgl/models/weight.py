@@ -36,6 +36,7 @@ def _shard_tensor(key: str, value: torch.Tensor, r: int, n: int, num_kv_heads: i
     if any(key.count(sub) for sub in _SPLIT_DIM_0):
         is_kv_proj = any(key.count(sub) for sub in (".k_proj", ".v_proj"))
         if is_kv_proj and num_kv_heads is not None and num_kv_heads < n:
+            # K/V 投影，且 KV head 数少于 TP 数：按 head 选择并复制 (GQA)
             head_dim = value.shape[0] // num_kv_heads
             head_idx = r * num_kv_heads // n
             return value[head_idx * head_dim : (head_idx + 1) * head_dim].clone()

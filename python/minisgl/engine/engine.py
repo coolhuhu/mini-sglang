@@ -50,9 +50,7 @@ class Engine:
         self.ctx = Context(config.page_size)
         set_global_ctx(self.ctx)
 
-        # TODO: 补课
         self.tp_cpu_group = self._init_communication(config)
-        # TODO: 补课
         init_free_memory = self._sync_get_memory()[1]
         logger.info_rank0(f"Free memory before loading model: {mem_GB(init_free_memory)}")
 
@@ -79,6 +77,13 @@ class Engine:
         aligned_max_seq_len = _align_up_32(self.max_seq_len)
         # page_table 管理每个 Req 中每个 token 的 KVCache 存放在那个 kvcache_pool 中的那个位置；
         # 是逻辑 token 和物理 KVCache 位置的映射
+        # 
+        # 需要区分的一点是，KVCache 初始化时，根据可用的GPU显存大小，以及考虑了系统运行的安全冗余的情况后，
+        # 计算出了当前可以允许计算的最多 token 数；
+        # 而 page_table 则是从“逻辑”上限制引擎在某一时刻片段内，允许运行的最多 Req 数量；
+        # 例如，max_running_req 设置为了 256，但在动态运行的过程中，某些时刻，
+        # 由于可用的 KVCache 不足，因此系统运行的 Req 数不会达到 max_running_req 上限；
+        # 具体的见 scheduler 中的实现；
         self.ctx.page_table = self.page_table = torch.zeros(  # + 1 for dummy request
             (config.max_running_req + 1, aligned_max_seq_len),
             dtype=torch.int32,
@@ -163,7 +168,12 @@ class Engine:
             return {k: v.to(self.dtype) for k, v in load_weight(config.model_path, self.device)}
 
     def _determine_num_pages(self, old_free_memory: int, config: EngineConfig) -> int:
+        # 因为每个 rank 上的 KV Cache 大小要是一致的，
+        # 因此为了保证每个 rank 上的 GPU 显存都能存放的下 TP 分片后的 KVCache，
+        # 应该通信组内 rank 的最小值作为 free_memory 进行计算吧？
+        # NOTE：因此这里应该取 self._sync_get_memory()[0] 吧？
         new_free_memory = self._sync_get_memory()[1]
+        # div_even 的目的是为了 TP 将 kv_cache 切分到每块 GPU 上
         cache_per_page = (
             2  # key + value
             * config.model_config.head_dim
@@ -186,10 +196,16 @@ class Engine:
 
     def _sync_get_memory(self) -> Tuple[int, int]:
         """Get the min and max free memory across TP ranks."""
+        
+        # 等待此前 GPU 操作完成
         torch.cuda.synchronize(self.device)
+        # 释放缓存分配器中可释放的空闲缓存，不会释放仍被模型等对象使用的张量
         torch.cuda.empty_cache()
+        # 重置峰值统计
         torch.cuda.reset_peak_memory_stats(self.device)
+        
         free_memory = get_free_memory(self.device)
+        # 通过 -free_memory，可以通过一次 all_reduce 获取组内的 GPU 的最大显存和最小显存值
         free_mem_tensor = torch.tensor([free_memory, -free_memory], device="cpu", dtype=torch.int64)
         torch.distributed.all_reduce(
             free_mem_tensor, op=torch.distributed.ReduceOp.MIN, group=self.tp_cpu_group

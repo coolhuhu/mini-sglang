@@ -46,7 +46,8 @@ class Scheduler(SchedulerIOMixin):
     def __init__(self, config: SchedulerConfig):
         from minisgl.engine import Engine
 
-        # TODO: 理解 Scheduler 和 Engine 的职责划分
+        # Engine 是资源的持有者，拥有核心的 KVCache 资源，以及负责模型的 forward
+        # Scheduler 是资源的调度者，Scheduler 负责自己 rank 上的资源调度
         self.engine = Engine(config)
 
         # TODO: understand.
